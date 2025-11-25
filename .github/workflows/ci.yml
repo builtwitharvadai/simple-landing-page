@@ -100,9 +100,21 @@ jobs:
       - name: Test Docker image
         run: |
           docker compose up -d
-          sleep 5
-          curl -f http://localhost:8080 || exit 1
+          echo "Waiting for nginx to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:8080 2>/dev/null; then
+              echo "✓ Nginx is ready and responding"
+              docker compose down
+              exit 0
+            fi
+            echo "Attempt $i/30: Nginx not ready yet, waiting 2 seconds..."
+            sleep 2
+          done
+          echo "✗ Nginx failed to respond after 60 seconds"
+          echo "Container logs:"
+          docker compose logs
           docker compose down
+          exit 1
       
       - name: Push Docker image
         if: github.event_name != 'pull_request'
