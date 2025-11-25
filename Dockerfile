@@ -1,41 +1,42 @@
-# Multi-stage build for production-ready static site
+# Multi-stage build for production-ready Docker image
+# Stage 1: Builder stage for markdown conversion
 FROM alpine:3.19 AS builder
 
-# Install Python and markdown processor
+# Install Python and markdown package for converting README.md
 RUN apk add --no-cache \
     python3 \
+    py3-pip \
     py3-markdown
 
-# Create build directory
+# Set working directory
 WORKDIR /build
+
+# Create directory for converted files
 RUN mkdir -p /build/converted
 
-# Copy any markdown files (will be empty if none exist)
+# Copy markdown files if they exist
 RUN if ls *.md 1> /dev/null 2>&1; then cp *.md .; fi
 
-# Convert markdown to HTML if files exist
+# Convert markdown to HTML (if markdown files exist)
 RUN for file in *.md; do \
         [ -f "$file" ] && python3 -m markdown "$file" > "converted/${file%.md}.html" || true; \
     done
 
-# Production stage
+# Stage 2: Production stage with nginx
 FROM nginx:1.25-alpine
 
-# Create non-root user
+# Create non-root user for running nginx
 RUN addgroup -g 1001 -S appuser && \
     adduser -u 1001 -S appuser -G appuser
 
-# Copy nginx configuration
-COPY --chown=appuser:appuser nginx.conf /etc/nginx/nginx.conf
+# Copy custom nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy static files
-COPY --chown=appuser:appuser *.html /usr/share/nginx/html/
-COPY --chown=appuser:appuser *.css /usr/share/nginx/html/
-COPY --chown=appuser:appuser *.js /usr/share/nginx/html/
-COPY --chown=appuser:appuser *.ico /usr/share/nginx/html/
+COPY --chown=appuser:appuser . /usr/share/nginx/html/
 
 # Copy converted markdown files from builder stage
-COPY --from=builder --chown=appuser:appuser /build/converted/*.html /usr/share/nginx/html/ 2>/dev/null || true
+COPY --from=builder --chown=appuser:appuser /build/converted/*.html /usr/share/nginx/html/
 
 # Set proper permissions
 RUN chown -R appuser:appuser /usr/share/nginx/html && \
