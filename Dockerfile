@@ -1,34 +1,37 @@
-# Multi-stage build for optimal image size
-FROM nginx:alpine AS builder
+# Multi-stage build for optimized production image
+FROM alpine:3.19 AS builder
 
-# Copy all files to builder stage
-COPY . /usr/share/nginx/html/
+# Install Python and markdown processor
+RUN apk add --no-cache python3 py3-markdown
 
 # Set working directory
-WORKDIR /usr/share/nginx/html
+WORKDIR /build
 
-# Convert markdown files to HTML if any exist
-# Using Alpine's native py3-markdown package
-# This keeps the final image size minimal
-RUN apk add --no-cache py3-markdown && \
-    if ls *.md 1> /dev/null 2>&1; then \
+# Copy markdown files
+COPY *.md ./
+
+# Convert markdown to HTML if any .md files exist
+RUN if ls *.md 1> /dev/null 2>&1; then \
         for file in *.md; do \
             [ -f "$file" ] && python3 -m markdown < "$file" > "${file%.md}.html"; \
         done; \
-    fi && \
-    apk del py3-markdown && \
-    rm -f *.md
-        
+    fi
+
 # Production stage
 FROM nginx:alpine
 
 # Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy built files from builder stage
-COPY --from=builder /usr/share/nginx/html /usr/share/nginx/html
+# Copy generated HTML files from builder stage
+COPY --from=builder /build/*.html /usr/share/nginx/html/ 2>/dev/null || echo "No HTML files to copy"
 
-# Create non-root user for running nginx
+# Create a default index.html if none exists
+RUN if [ ! -f /usr/share/nginx/html/index.html ]; then \
+        echo '<!DOCTYPE html><html><head><title>Landing Page</title></head><body><h1>Welcome</h1><p>Landing page is running.</p></body></html>' > /usr/share/nginx/html/index.html; \
+    fi
+
+# Create non-root user for security
 RUN addgroup -g 1001 -S nginx-user && \
     adduser -u 1001 -S nginx-user -G nginx-user && \
     chown -R nginx-user:nginx-user /usr/share/nginx/html && \
@@ -41,11 +44,11 @@ RUN addgroup -g 1001 -S nginx-user && \
 USER nginx-user
 
 # Expose port
-EXPOSE 8080
+EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:8080/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://localhost:80/ || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
