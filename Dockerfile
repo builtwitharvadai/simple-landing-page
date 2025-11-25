@@ -1,56 +1,49 @@
-# Multi-stage build for production-ready Docker image
-# Stage 1: Builder stage for processing markdown files
+# Multi-stage build for production-ready static site
 FROM alpine:3.19 AS builder
 
-# Install required tools for markdown processing
-RUN apk add --no-cache python3 py3-markdown
+# Install Python and markdown processor
+RUN apk add --no-cache \
+    python3 \
+    py3-markdown
 
-# Create working directory
+# Create build directory
 WORKDIR /build
-
-# Copy markdown files if they exist and convert to HTML
 RUN mkdir -p /build/converted
 
 # Copy any markdown files (will be empty if none exist)
-COPY *.md . 2>/dev/null || true
+RUN if ls *.md 1> /dev/null 2>&1; then cp *.md .; fi
 
 # Convert markdown to HTML if files exist
-RUN if ls *.md 1> /dev/null 2>&1; then \
-        for file in *.md; do \
-            python3 -m markdown "$file" > "/build/converted/${file%.md}.html"; \
-        done; \
-    fi
+RUN for file in *.md; do \
+        [ -f "$file" ] && python3 -m markdown "$file" > "converted/${file%.md}.html" || true; \
+    done
 
-# Stage 2: Production nginx image
-FROM nginx:alpine
+# Production stage
+FROM nginx:1.25-alpine
 
-# Create non-root user for security
+# Create non-root user
 RUN addgroup -g 1001 -S appuser && \
     adduser -u 1001 -S appuser -G appuser
 
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+# Copy nginx configuration
+COPY --chown=appuser:appuser nginx.conf /etc/nginx/nginx.conf
 
-# Set working directory
-WORKDIR /usr/share/nginx/html
-
-# Copy static files with proper ownership
+# Copy static files
 COPY --chown=appuser:appuser *.html /usr/share/nginx/html/
 COPY --chown=appuser:appuser *.css /usr/share/nginx/html/
 COPY --chown=appuser:appuser *.js /usr/share/nginx/html/
-    
-# Copy converted markdown files from builder
-COPY --from=builder --chown=appuser:appuser /build/converted/* /usr/share/nginx/html/ 2>/dev/null || true
+COPY --chown=appuser:appuser *.ico /usr/share/nginx/html/
+
+# Copy converted markdown files from builder stage
+COPY --from=builder --chown=appuser:appuser /build/converted/*.html /usr/share/nginx/html/ 2>/dev/null || true
 
 # Set proper permissions
 RUN chown -R appuser:appuser /usr/share/nginx/html && \
-    chmod -R 755 /usr/share/nginx/html && \
-    # Create nginx cache and pid directories with proper permissions
-    mkdir -p /var/cache/nginx /var/run && \
-    chown -R appuser:appuser /var/cache/nginx /var/run && \
-    # Ensure nginx can write to log files
-    touch /var/log/nginx/access.log /var/log/nginx/error.log && \
-    chown appuser:appuser /var/log/nginx/access.log /var/log/nginx/error.log
+    chown -R appuser:appuser /var/cache/nginx && \
+    chown -R appuser:appuser /var/log/nginx && \
+    chown -R appuser:appuser /etc/nginx/conf.d && \
+    touch /var/run/nginx.pid && \
+    chown -R appuser:appuser /var/run/nginx.pid
 
 # Switch to non-root user
 USER appuser
