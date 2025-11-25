@@ -1,16 +1,15 @@
-FROM nginx:1.27-alpine
+# Multi-stage build for production-ready Docker image
+FROM nginx:alpine AS builder
 
-LABEL maintainer="devops@example.com" \
-      version="1.0.0" \
-      description="Simple Landing Page"
-
+# Set working directory
 WORKDIR /usr/share/nginx/html
 
-RUN rm -rf ./*
-
+# Copy markdown files
 COPY *.md ./
 
-RUN apk add --no-cache python3 && \
+# Install Python and markdown package, convert files, then cleanup
+# This keeps the final image size minimal
+RUN apk add --no-cache python3 py3-pip && \
     python3 -m pip install --no-cache-dir markdown && \
     for file in *.md; do \
         [ -f "$file" ] && python3 -m markdown "$file" > "${file%.md}.html"; \
@@ -18,18 +17,28 @@ RUN apk add --no-cache python3 && \
     apk del python3 && \
     rm -f *.md
 
-RUN addgroup -g 1001 -S nginx && \
-    adduser -S nginx -u 1001 -G nginx && \
-    chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/run /var/log/nginx && \
-    chmod -R 755 /usr/share/nginx/html
+# Production stage
+FROM nginx:alpine
 
-USER nginx
+# Create non-root user for security
+RUN addgroup -g 1001 -S appuser && \
+    adduser -u 1001 -S appuser -G appuser
 
+# Copy converted HTML files from builder
+COPY --from=builder --chown=appuser:appuser /usr/share/nginx/html/*.html /usr/share/nginx/html/
+
+# Copy nginx configuration
+COPY --chown=appuser:appuser nginx.conf /etc/nginx/nginx.conf
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
 EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
-
-STOPSIGNAL SIGTERM
-
+# Start nginx
 CMD ["nginx", "-g", "daemon off;"]
