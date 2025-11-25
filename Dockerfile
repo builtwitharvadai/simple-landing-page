@@ -1,42 +1,45 @@
-# Multi-stage build for production-ready static site
+# Multi-stage build for simple landing page
+# Stage 1: Builder stage for processing markdown files
 FROM alpine:3.19 AS builder
 
 # Install Python and markdown processor
 RUN apk add --no-cache python3 py3-markdown
 
+# Copy markdown files if they exist
 WORKDIR /build
+COPY *.md .
 
-# Copy markdown files if they exist and convert to HTML
-RUN mkdir -p /build && \
-    if ls /*.md 1> /dev/null 2>&1; then \
-        cp /*.md /build/ 2>/dev/null || true; \
-    fi
-
-# Convert markdown to HTML if any .md files exist
+# Convert markdown to HTML if files exist
 RUN if ls *.md 1> /dev/null 2>&1; then \
         for file in *.md; do \
             python3 -m markdown "$file" > "${file%.md}.html"; \
         done; \
     fi
 
-# Production stage
+# Stage 2: Production stage with nginx
 FROM nginx:alpine
 
 # Create non-root user
 RUN addgroup -g 1001 -S appuser && \
     adduser -u 1001 -S appuser -G appuser
 
-# Copy custom nginx configuration
+# Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Copy static files
-COPY --chown=appuser:appuser *.html /usr/share/nginx/html/ 2>/dev/null || true
-COPY --chown=appuser:appuser *.css /usr/share/nginx/html/ 2>/dev/null || true
-COPY --chown=appuser:appuser *.js /usr/share/nginx/html/ 2>/dev/null || true
-COPY --chown=appuser:appuser assets/ /usr/share/nginx/html/assets/ 2>/dev/null || true
+# Copy static files with proper ownership
+# Using wildcards to copy only if files exist
+WORKDIR /usr/share/nginx/html
 
+# Copy HTML files
+COPY --chown=appuser:appuser *.html /usr/share/nginx/html/
+
+# Copy CSS files
+COPY --chown=appuser:appuser *.css /usr/share/nginx/html/
+COPY --chown=appuser:appuser *.js /usr/share/nginx/html/
+COPY --chown=appuser:appuser assets/ /usr/share/nginx/html/assets/
+    
 # Copy converted markdown files from builder
-COPY --from=builder --chown=appuser:appuser /build/*.html /usr/share/nginx/html/ 2>/dev/null || true
+COPY --from=builder --chown=appuser:appuser /build/*.html /usr/share/nginx/html/
 
 # Set proper permissions
 RUN chown -R appuser:appuser /usr/share/nginx/html && \
