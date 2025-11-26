@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: landing-page-config
+data:
+  ENVIRONMENT: development
+  LOG_LEVEL: debug

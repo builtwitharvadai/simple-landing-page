@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: landing-page-deployment
+  namespace: dev
+  labels:
+    app: landing-page
+    version: v1.0.0
+    component: frontend
+    managed-by: kustomize
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    description: "Static landing page deployment"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  
+  selector:
+    matchLabels:
+      app: landing-page
+  
+  template:
+    metadata:
+      labels:
+        app: landing-page
+        version: v1.0.0
+        component: frontend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/health"
+    
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      
+      containers:
+        - name: landing-page
+          image: ghcr.io/OWNER/landing-page:latest
+          imagePullPolicy: IfNotPresent
+          
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+              ephemeral-storage: 100Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+              ephemeral-storage: 500Mi
+          
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              httpHeaders:
+                - name: X-Probe-Type
+                  value: liveness
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+              httpHeaders:
+                - name: X-Probe-Type
+                  value: readiness
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+          
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          
+          envFrom:
+            - configMapRef:
+                name: landing-page-config
+          
+          volumeMounts:
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+          
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 15
+      
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 50Mi
+        - name: run
+          emptyDir:
+            sizeLimit: 10Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 50Mi
+      
+      terminationGracePeriodSeconds: 30
+      
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always

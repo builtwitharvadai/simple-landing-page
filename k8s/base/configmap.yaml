@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: landing-page-config
+  namespace: default
+  labels:
+    app: landing-page
+    component: config
+    managed-by: kustomize
+  annotations:
+    description: "Configuration for landing page application"
+data:
+  LOG_LEVEL: "info"
+  ENVIRONMENT: "base"
+  NGINX_PORT: "8080"
