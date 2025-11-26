@@ -20,6 +20,8 @@
     SMOOTH_SCROLL_BEHAVIOR: 'smooth',
     ACTIVE_NAV_CLASS: 'active',
     LOADED_CLASS: 'loaded',
+    LAZY_LOAD_THRESHOLD: 0.1,
+    ANIMATION_CLASS: 'fade-in-visible',
   });
 
   // ============================================
@@ -112,6 +114,16 @@
     }
     
     requestAnimationFrame(animation);
+  }
+
+  /**
+   * Checks if IntersectionObserver is supported
+   * @returns {boolean} True if supported
+   */
+  function isIntersectionObserverSupported() {
+    return 'IntersectionObserver' in window &&
+           'IntersectionObserverEntry' in window &&
+           'intersectionRatio' in window.IntersectionObserverEntry.prototype;
   }
 
   // ============================================
@@ -207,6 +219,11 @@
       }
     });
 
+    if (!isIntersectionObserverSupported()) {
+      console.warn('[Navigation] IntersectionObserver not supported, skipping active nav highlighting');
+      return;
+    }
+
     // Intersection Observer options
     const observerOptions = {
       root: null,
@@ -254,6 +271,137 @@
       activeLink.classList.add(CONFIG.ACTIVE_NAV_CLASS);
       activeLink.setAttribute('aria-current', 'page');
     }
+  }
+
+  // ============================================
+  // Lazy Loading Images
+  // ============================================
+
+  /**
+   * Initializes lazy loading for images
+   */
+  function initLazyLoading() {
+    const images = querySelectorAll('img[loading="lazy"]');
+    
+    if (images.length === 0) {
+      console.info('[Images] No lazy-load images found');
+      return;
+    }
+
+    // Check for native lazy loading support
+    if ('loading' in HTMLImageElement.prototype) {
+      console.info(`[Images] Native lazy loading supported for ${images.length} images`);
+      trackImageLoadPerformance(images);
+      return;
+    }
+
+    // Polyfill for browsers without native lazy loading
+    if (!isIntersectionObserverSupported()) {
+      console.warn('[Images] IntersectionObserver not supported, loading all images immediately');
+      images.forEach(img => loadImage(img));
+      return;
+    }
+
+    const imageObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          loadImage(img);
+          imageObserver.unobserve(img);
+        }
+      });
+    }, {
+      root: null,
+      rootMargin: '50px',
+      threshold: CONFIG.LAZY_LOAD_THRESHOLD
+    });
+
+    images.forEach(img => imageObserver.observe(img));
+    
+    console.info(`[Images] Lazy loading polyfill initialized for ${images.length} images`);
+  }
+
+  /**
+   * Loads an image by setting its src attribute
+   * @param {HTMLImageElement} img - Image element to load
+   */
+  function loadImage(img) {
+    const src = img.getAttribute('src');
+    if (!src) {
+      console.warn('[Images] Image missing src attribute', img);
+      return;
+    }
+
+    img.addEventListener('load', () => {
+      console.info(`[Images] Loaded: ${src}`);
+    }, { once: true });
+
+    img.addEventListener('error', () => {
+      console.error(`[Images] Failed to load: ${src}`);
+    }, { once: true });
+  }
+
+  /**
+   * Tracks image load performance
+   * @param {HTMLImageElement[]} images - Array of image elements
+   */
+  function trackImageLoadPerformance(images) {
+    if (!window.performance || !window.performance.getEntriesByType) {
+      return;
+    }
+
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const imageResources = performance.getEntriesByType('resource')
+          .filter(entry => entry.initiatorType === 'img');
+        
+        if (imageResources.length > 0) {
+          const totalSize = imageResources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0);
+          const avgLoadTime = imageResources.reduce((sum, entry) => sum + entry.duration, 0) / imageResources.length;
+          
+          console.info(`[Images] Performance: ${imageResources.length} images, ${(totalSize / 1024).toFixed(2)}KB total, ${avgLoadTime.toFixed(2)}ms avg load time`);
+        }
+      }, 1000);
+    });
+  }
+
+  // ============================================
+  // Scroll-Triggered Animations
+  // ============================================
+
+  /**
+   * Initializes scroll-triggered animations for feature cards
+   */
+  function initScrollAnimations() {
+    const animatedElements = querySelectorAll('.feature-card, .benefit-item');
+    
+    if (animatedElements.length === 0) {
+      console.info('[Animations] No animated elements found');
+      return;
+    }
+
+    if (!isIntersectionObserverSupported()) {
+      console.warn('[Animations] IntersectionObserver not supported, showing all elements immediately');
+      animatedElements.forEach(el => el.classList.add(CONFIG.ANIMATION_CLASS));
+      return;
+    }
+
+    const animationObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add(CONFIG.ANIMATION_CLASS);
+          animationObserver.unobserve(entry.target);
+        }
+      });
+    }, {
+      root: null,
+      rootMargin: '0px',
+      threshold: 0.1
+    });
+
+    animatedElements.forEach(el => animationObserver.observe(el));
+    
+    console.info(`[Animations] Scroll animations initialized for ${animatedElements.length} elements`);
   }
 
   // ============================================
@@ -418,6 +566,8 @@
       initMobileMenu();
       initScrollHandler();
       initPageLoadAnimations();
+      initLazyLoading();
+      initScrollAnimations();
 
       console.info('[Navigation] All features initialized successfully');
     } catch (error) {
@@ -443,6 +593,7 @@
       CONFIG,
       debounce,
       isSmoothScrollSupported,
+      isIntersectionObserverSupported,
       FormValidation
     });
   }
