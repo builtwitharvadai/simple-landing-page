@@ -1,0 +1,5 @@
+# Check file size
+   ls -lh assets/images/feature-2.jpg
+   
+   # Check dimensions
+   identify assets/images/feature-2.jpg

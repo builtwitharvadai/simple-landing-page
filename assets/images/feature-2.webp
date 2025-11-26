@@ -1,0 +1,8 @@
+# Using cwebp (WebP encoder)
+cwebp -q 80 -resize 800 450 source-image.jpg -o assets/images/feature-2.webp
+
+# Using ImageMagick
+convert source-image.jpg -resize 800x450 -quality 80 assets/images/feature-2.webp
+
+# Using squoosh-cli
+squoosh-cli --webp '{"quality":80}' --resize '{"width":800,"height":450}' source-image.jpg -d assets/images/
