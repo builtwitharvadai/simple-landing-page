@@ -1,0 +1,8 @@
+# Using cwebp (from libwebp)
+cwebp -q 80 input.jpg -o feature-1.webp
+
+# Using squoosh-cli
+npx @squoosh/cli --webp '{"quality":80}' input.jpg
+
+# Using ImageMagick
+convert input.jpg -quality 80 -define webp:lossless=false feature-1.webp
