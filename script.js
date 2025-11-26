@@ -22,6 +22,11 @@
     LOADED_CLASS: 'loaded',
     LAZY_LOAD_THRESHOLD: 0.1,
     ANIMATION_CLASS: 'fade-in-visible',
+    FORM_VALIDATION_DEBOUNCE: 300,
+    MIN_NAME_LENGTH: 2,
+    MAX_NAME_LENGTH: 100,
+    MIN_MESSAGE_LENGTH: 10,
+    MAX_MESSAGE_LENGTH: 1000,
   });
 
   // ============================================
@@ -506,6 +511,277 @@
   window.FormValidation = FormValidation;
 
   // ============================================
+  // Contact Form Validation & Submission
+  // ============================================
+
+  /**
+   * Validates name field
+   * @param {string} name - Name to validate
+   * @returns {{ valid: boolean, error: string }} Validation result
+   */
+  function validateName(name) {
+    if (!isRequired(name)) {
+      return { valid: false, error: 'Name is required' };
+    }
+    
+    if (!hasMinLength(name, CONFIG.MIN_NAME_LENGTH)) {
+      return { valid: false, error: `Name must be at least ${CONFIG.MIN_NAME_LENGTH} characters` };
+    }
+    
+    if (name.trim().length > CONFIG.MAX_NAME_LENGTH) {
+      return { valid: false, error: `Name must not exceed ${CONFIG.MAX_NAME_LENGTH} characters` };
+    }
+    
+    return { valid: true, error: '' };
+  }
+
+  /**
+   * Validates email field
+   * @param {string} email - Email to validate
+   * @returns {{ valid: boolean, error: string }} Validation result
+   */
+  function validateEmail(email) {
+    if (!isRequired(email)) {
+      return { valid: false, error: 'Email is required' };
+    }
+    
+    if (!isValidEmail(email)) {
+      return { valid: false, error: 'Please enter a valid email address' };
+    }
+    
+    return { valid: true, error: '' };
+  }
+
+  /**
+   * Validates message field
+   * @param {string} message - Message to validate
+   * @returns {{ valid: boolean, error: string }} Validation result
+   */
+  function validateMessage(message) {
+    if (!isRequired(message)) {
+      return { valid: false, error: 'Message is required' };
+    }
+    
+    if (!hasMinLength(message, CONFIG.MIN_MESSAGE_LENGTH)) {
+      return { valid: false, error: `Message must be at least ${CONFIG.MIN_MESSAGE_LENGTH} characters` };
+    }
+    
+    if (message.trim().length > CONFIG.MAX_MESSAGE_LENGTH) {
+      return { valid: false, error: `Message must not exceed ${CONFIG.MAX_MESSAGE_LENGTH} characters` };
+    }
+    
+    return { valid: true, error: '' };
+  }
+
+  /**
+   * Shows error message for a field
+   * @param {HTMLElement} input - Input element
+   * @param {string} errorMessage - Error message to display
+   */
+  function showError(input, errorMessage) {
+    const errorId = input.getAttribute('aria-describedby');
+    const errorElement = errorId ? document.getElementById(errorId) : null;
+    
+    if (errorElement) {
+      errorElement.textContent = errorMessage;
+      input.setAttribute('aria-invalid', 'true');
+    }
+  }
+
+  /**
+   * Clears error message for a field
+   * @param {HTMLElement} input - Input element
+   */
+  function clearError(input) {
+    const errorId = input.getAttribute('aria-describedby');
+    const errorElement = errorId ? document.getElementById(errorId) : null;
+    
+    if (errorElement) {
+      errorElement.textContent = '';
+      input.setAttribute('aria-invalid', 'false');
+    }
+  }
+
+  /**
+   * Validates a single form field
+   * @param {HTMLElement} input - Input element to validate
+   * @returns {boolean} True if valid
+   */
+  function validateField(input) {
+    const value = input.value;
+    let result;
+    
+    switch (input.id) {
+      case 'contact-name':
+        result = validateName(value);
+        break;
+      case 'contact-email':
+        result = validateEmail(value);
+        break;
+      case 'contact-message':
+        result = validateMessage(value);
+        break;
+      default:
+        return true;
+    }
+    
+    if (result.valid) {
+      clearError(input);
+      return true;
+    } else {
+      showError(input, result.error);
+      return false;
+    }
+  }
+
+  /**
+   * Validates all form fields
+   * @param {HTMLFormElement} form - Form element
+   * @returns {boolean} True if all fields are valid
+   */
+  function validateAllFields(form) {
+    const nameInput = querySelector('#contact-name', form);
+    const emailInput = querySelector('#contact-email', form);
+    const messageInput = querySelector('#contact-message', form);
+    
+    if (!nameInput || !emailInput || !messageInput) {
+      console.error('[Form] Required form fields not found');
+      return false;
+    }
+    
+    const nameValid = validateField(nameInput);
+    const emailValid = validateField(emailInput);
+    const messageValid = validateField(messageInput);
+    
+    return nameValid && emailValid && messageValid;
+  }
+
+  /**
+   * Focuses the first invalid field
+   * @param {HTMLFormElement} form - Form element
+   */
+  function focusFirstError(form) {
+    const invalidInput = querySelector('[aria-invalid="true"]', form);
+    if (invalidInput) {
+      invalidInput.focus();
+    }
+  }
+
+  /**
+   * Resets the contact form
+   * @param {HTMLFormElement} form - Form element
+   */
+  function resetContactForm(form) {
+    form.reset();
+    
+    const inputs = querySelectorAll('input, textarea', form);
+    inputs.forEach(input => clearError(input));
+    
+    console.info('[Form] Contact form reset');
+  }
+
+  /**
+   * Shows success message and hides form
+   * @param {HTMLFormElement} form - Form element
+   */
+  function showSuccessMessage(form) {
+    const successElement = querySelector('#form-success');
+    
+    if (successElement) {
+      form.style.display = 'none';
+      successElement.style.display = 'block';
+      successElement.focus();
+      
+      console.info('[Form] Success message displayed');
+    }
+  }
+
+  /**
+   * Handles form submission
+   * @param {Event} event - Submit event
+   */
+  function handleFormSubmit(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const submitButton = querySelector('button[type="submit"]', form);
+    
+    console.info('[Form] Form submission initiated');
+    
+    // Validate all fields
+    const isValid = validateAllFields(form);
+    
+    if (!isValid) {
+      console.warn('[Form] Form validation failed');
+      focusFirstError(form);
+      return;
+    }
+    
+    // Disable submit button during processing
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.setAttribute('aria-busy', 'true');
+    }
+    
+    // Simulate form submission (no backend yet)
+    setTimeout(() => {
+      console.info('[Form] Form submitted successfully');
+      
+      // Show success message
+      showSuccessMessage(form);
+      
+      // Reset form
+      resetContactForm(form);
+      
+      // Re-enable submit button
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.setAttribute('aria-busy', 'false');
+      }
+    }, 500);
+  }
+
+  /**
+   * Initializes contact form validation and submission
+   */
+  function initContactForm() {
+    const form = querySelector('#contact-form');
+    
+    if (!form) {
+      console.info('[Form] Contact form not found');
+      return;
+    }
+    
+    // Add submit event listener
+    form.addEventListener('submit', handleFormSubmit);
+    
+    // Add real-time validation with debouncing
+    const nameInput = querySelector('#contact-name', form);
+    const emailInput = querySelector('#contact-email', form);
+    const messageInput = querySelector('#contact-message', form);
+    
+    if (nameInput) {
+      const debouncedValidateName = debounce(() => validateField(nameInput), CONFIG.FORM_VALIDATION_DEBOUNCE);
+      nameInput.addEventListener('blur', () => validateField(nameInput));
+      nameInput.addEventListener('input', debouncedValidateName);
+    }
+    
+    if (emailInput) {
+      const debouncedValidateEmail = debounce(() => validateField(emailInput), CONFIG.FORM_VALIDATION_DEBOUNCE);
+      emailInput.addEventListener('blur', () => validateField(emailInput));
+      emailInput.addEventListener('input', debouncedValidateEmail);
+    }
+    
+    if (messageInput) {
+      const debouncedValidateMessage = debounce(() => validateField(messageInput), CONFIG.FORM_VALIDATION_DEBOUNCE);
+      messageInput.addEventListener('blur', () => validateField(messageInput));
+      messageInput.addEventListener('input', debouncedValidateMessage);
+    }
+    
+    console.info('[Form] Contact form validation initialized');
+  }
+
+  // ============================================
   // Scroll Event Handling
   // ============================================
 
@@ -568,6 +844,7 @@
       initPageLoadAnimations();
       initLazyLoading();
       initScrollAnimations();
+      initContactForm();
 
       console.info('[Navigation] All features initialized successfully');
     } catch (error) {
@@ -594,7 +871,11 @@
       debounce,
       isSmoothScrollSupported,
       isIntersectionObserverSupported,
-      FormValidation
+      FormValidation,
+      validateName,
+      validateEmail,
+      validateMessage,
+      resetContactForm
     });
   }
 
