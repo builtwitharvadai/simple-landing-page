@@ -15,7 +15,7 @@ WORKDIR /build
 RUN mkdir -p /build/converted
 
 # Copy markdown files if they exist
-RUN if ls *.md 1> /dev/null 2>&1; then cp *.md .; fi
+COPY *.md . 2>/dev/null || true
 
 # Convert markdown to HTML (if markdown files exist)
 RUN for file in *.md; do \
@@ -26,35 +26,35 @@ RUN for file in *.md; do \
 FROM nginx:1.25-alpine
 
 # Create non-root user for running nginx
-RUN addgroup -g 1001 -S appuser && \
-    adduser -u 1001 -S appuser -G appuser
+RUN addgroup -g 101 -S nginx && \
+    adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx 2>/dev/null || true
 
 # Copy custom nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy static files
-COPY --chown=appuser:appuser . /usr/share/nginx/html/
+COPY --chown=nginx:nginx . /usr/share/nginx/html/
 
 # Copy converted markdown files from builder stage
-COPY --from=builder --chown=appuser:appuser /build/converted/*.html /usr/share/nginx/html/
+COPY --from=builder --chown=nginx:nginx /build/converted/*.html /usr/share/nginx/html/ 2>/dev/null || true
 
 # Set proper permissions
-RUN chown -R appuser:appuser /usr/share/nginx/html && \
-    chown -R appuser:appuser /var/cache/nginx && \
-    chown -R appuser:appuser /var/log/nginx && \
-    chown -R appuser:appuser /etc/nginx/conf.d && \
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    chown -R nginx:nginx /etc/nginx/conf.d && \
     touch /var/run/nginx.pid && \
-    chown -R appuser:appuser /var/run/nginx.pid
+    chown -R nginx:nginx /var/run/nginx.pid
 
 # Switch to non-root user
-USER appuser
+USER nginx
 
 # Expose port
 EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
