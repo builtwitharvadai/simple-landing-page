@@ -1,0 +1,4 @@
+sharp('feature-1.webp')
+       .resize(800, 450)
+       .jpeg({ quality: 85 })
+       .toFile('feature-1.jpg')
