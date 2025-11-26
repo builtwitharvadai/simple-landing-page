@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: landing-page-config
+  namespace: default
+  labels:
+    app: landing-page
+    component: config
+    environment: staging
+    managed-by: kustomize
+  annotations:
+    description: "Staging environment configuration for landing page application"
+data:
+  ENVIRONMENT: "staging"
+  LOG_LEVEL: "info"
+  NGINX_PORT: "8080"
